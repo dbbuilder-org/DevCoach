@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <circle cx="12" cy="12" r="11" fill="#1a73e8" />
+  <!-- Graduation cap body -->
+  <polygon points="12,5 20,9.5 12,14 4,9.5" fill="white" opacity="0.95"/>
+  <!-- Cap top board -->
+  <rect x="8" y="9.5" width="8" height="1.5" fill="white" opacity="0.7" rx="0.5"/>
+  <!-- Tassel string -->
+  <line x1="20" y1="9.5" x2="20" y2="15" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Tassel end -->
+  <circle cx="20" cy="15.5" r="1.2" fill="white" opacity="0.9"/>
+  <!-- Lightning bolt overlay for "coach" energy -->
+  <polygon points="13,8 11,12 13,12 11,17 14,11.5 12,11.5 14,8" fill="#FFD700" opacity="0.85"/>
+</svg>

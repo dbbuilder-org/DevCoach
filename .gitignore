@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+backend/.env
+
+# Alembic
+backend/alembic/versions/__pycache__/
+
+# Node / VS Code Extension
+extension/node_modules/
+extension/out/
+extension/*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Secrets
+*.env.local
+.env.production
+credentials.json

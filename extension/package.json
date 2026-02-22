@@ -1,0 +1,67 @@
+{
+  "name": "devcoach",
+  "displayName": "DevCoach",
+  "description": "AI-powered daily engineering coach with GitHub integration",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{
+        "id": "devcoach",
+        "title": "DevCoach",
+        "icon": "resources/icon.svg"
+      }]
+    },
+    "views": {
+      "devcoach": [{
+        "type": "webview",
+        "id": "devcoach.sidebar",
+        "name": "DevCoach"
+      }]
+    },
+    "commands": [
+      { "command": "devcoach.openPanel", "title": "DevCoach: Open in Panel (Undocked)" },
+      { "command": "devcoach.startDay", "title": "DevCoach: Start My Day" },
+      { "command": "devcoach.startWorkBlock", "title": "DevCoach: Start Work Block" },
+      { "command": "devcoach.endWorkBlock", "title": "DevCoach: End Work Block" },
+      { "command": "devcoach.configure", "title": "DevCoach: Configure API Keys" }
+    ],
+    "configuration": {
+      "title": "DevCoach",
+      "properties": {
+        "devcoach.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "DevCoach backend URL"
+        },
+        "devcoach.defaultRepo": {
+          "type": "string",
+          "default": "",
+          "description": "Default GitHub repo (owner/repo format)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outdir=out --platform=node --external:vscode --sourcemap && esbuild src/webview/index.tsx --bundle --outdir=out/webview --platform=browser --sourcemap --define:process.env.NODE_ENV=\\\"production\\\"",
+    "watch": "concurrently \"esbuild src/extension.ts --bundle --outdir=out --platform=node --external:vscode --watch --sourcemap\" \"esbuild src/webview/index.tsx --bundle --outdir=out/webview --platform=browser --watch --sourcemap --define:process.env.NODE_ENV=\\\"development\\\"\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.85.0",
+    "concurrently": "^8.2.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}
