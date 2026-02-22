@@ -63,6 +63,9 @@ def do_run_migrations(connection):
 
 async def run_async_migrations() -> None:
     """Entry point for running migrations with an async engine."""
+    # Set the URL on the config object before get_section() so configparser
+    # never tries to interpolate the %(DATABASE_URL)s placeholder in alembic.ini
+    config.set_main_option("sqlalchemy.url", get_url())
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_url()
 
