@@ -25,39 +25,56 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full detail.
 ### Prerequisites
 - Node.js 20+
 - Python 3.11+
-- A GitHub Personal Access Token (repo + read:user scopes)
+- PostgreSQL running locally (or a Render account for hosted)
+- A GitHub Personal Access Token (`repo` + `read:user` scopes)
 - An Anthropic API key
-- PostgreSQL (or a Render account for hosted)
 
-### Backend (local dev)
+### Automated setup
+
+Run this from the repo root:
 
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+bash setup.sh
+```
 
-cp .env.example .env
-# edit .env with your DATABASE_URL, ANTHROPIC_API_KEY, SECRET_KEY
+The script will:
+- Create and activate a Python virtualenv, install backend dependencies
+- Create `backend/.env` from `.env.example` and generate a `SECRET_KEY`
+- Create the `devcoach` PostgreSQL database and run Alembic migrations
+- Run `npm install` and build the VS Code extension
 
-# Create database and run migrations
-createdb devcoach
-alembic upgrade head
+It will print step-by-step instructions for the three things that can't be scripted:
 
-# Start server
+**1. Fill in `backend/.env`** — paste in your `ANTHROPIC_API_KEY` and confirm `DATABASE_URL` matches your local Postgres.
+
+**2. Start the backend**
+```bash
+cd backend && source .venv/bin/activate
 uvicorn main:app --reload --port 8000
+# Verify: http://localhost:8000/health
+# API docs: http://localhost:8000/docs
 ```
 
-### Extension (local dev)
+**3. Launch the extension**
 
+Option A — dev mode with live reload:
 ```bash
-cd extension
-npm install
-npm run watch   # watches both extension host and webview
-
-# In VS Code: F5 to launch Extension Development Host
+cd extension && npm run watch
+# Then press F5 in VS Code → Extension Development Host opens
 ```
 
-On first launch, run **DevCoach: Configure API Keys** from the command palette.
+Option B — install the packaged extension:
+```bash
+code --install-extension extension/devcoach-0.1.0.vsix
+```
+
+**4. Configure API keys (first launch)**
+
+`Cmd+Shift+P` → **DevCoach: Configure API Keys** → enter your GitHub PAT and Anthropic key.
+
+**5. Start your day**
+
+`Cmd+Shift+P` → **DevCoach: Start My Day**, or click the DevCoach icon in the activity bar.
 
 ---
 
