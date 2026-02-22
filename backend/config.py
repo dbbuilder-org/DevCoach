@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
+        # Render managed PostgreSQL injects a plain postgresql:// URL — rewrite it
+        if v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
         if not v.startswith("postgresql+asyncpg://"):
             raise ValueError(
                 "DATABASE_URL must use the postgresql+asyncpg:// scheme for async support"
