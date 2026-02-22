@@ -20,7 +20,7 @@ services:
   - type: web
     name: devcoach-web
     runtime: static
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npm install --prefix ../extension && npm run build
     staticPublishPath: dist
     rootDir: web
     headers:
