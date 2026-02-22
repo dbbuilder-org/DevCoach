@@ -15,5 +15,5 @@
       "@ext/*": ["../extension/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "node_modules/vite/client.d.ts"]
 }

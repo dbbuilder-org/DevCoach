@@ -31,6 +31,17 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    envVars:
+      - key: VITE_PREFILL_BACKEND_URL
+        value: https://devcoach-api.onrender.com
+      - key: VITE_PREFILL_OWNER
+        value: dbbuilder-org
+      - key: VITE_PREFILL_REPO
+        value: DevCoach
+      - key: VITE_PREFILL_PAT
+        sync: false
+      - key: VITE_PREFILL_ANTHROPIC_KEY
+        sync: false
 
 databases:
   - name: devcoach-db

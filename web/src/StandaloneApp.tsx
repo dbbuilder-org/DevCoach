@@ -9,6 +9,30 @@ import PuzzlePanel from '@ext/webview/components/PuzzlePanel'
 import ConfigScreen, { loadConfig } from './ConfigScreen'
 import type { DevCoachConfig } from './ConfigScreen'
 
+const STORAGE_KEY = 'dc_config'
+
+// If Vite build-time env vars are present and no config is saved yet, seed
+// localStorage so the user lands directly in the app without the config form.
+function maybeAutoSeed(): DevCoachConfig | null {
+  const pat = import.meta.env.VITE_PREFILL_PAT as string | undefined
+  const anthropicKey = import.meta.env.VITE_PREFILL_ANTHROPIC_KEY as string | undefined
+  const backendUrl = import.meta.env.VITE_PREFILL_BACKEND_URL as string | undefined
+  const owner = import.meta.env.VITE_PREFILL_OWNER as string | undefined
+  const repo = import.meta.env.VITE_PREFILL_REPO as string | undefined
+
+  if (!pat || !anthropicKey) return null
+
+  const seeded: DevCoachConfig = {
+    backendUrl: backendUrl ?? 'https://devcoach-api.onrender.com',
+    githubPat: pat,
+    anthropicKey,
+    owner: owner ?? '',
+    repo: repo ?? '',
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
+  return seeded
+}
+
 type Tab = 'today' | 'queue' | 'chat' | 'charts' | 'puzzle'
 
 const TABS: { id: Tab; label: string }[] = [
@@ -20,7 +44,7 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 export default function StandaloneApp() {
-  const [config, setConfig] = useState<DevCoachConfig | null>(() => loadConfig())
+  const [config, setConfig] = useState<DevCoachConfig | null>(() => loadConfig() ?? maybeAutoSeed())
   const [showConfig, setShowConfig] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('today')
   const [session, setSession] = useState<Session | null>(null)
