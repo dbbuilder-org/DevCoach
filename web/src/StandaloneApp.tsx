@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiClient } from '@ext/services/ApiClient'
 import type { ChatContext, ProactiveTrigger, Session, WorkBlock, QueueItem } from '@ext/services/ApiClient'
 import TodayPanel from '@ext/webview/components/TodayPanel'
@@ -54,19 +54,11 @@ export default function StandaloneApp() {
     context: ChatContext
   } | null>(null)
 
-  const apiClientRef = useRef<ApiClient | null>(null)
-
-  // Build ApiClient whenever config changes
-  useEffect(() => {
-    if (config) {
-      apiClientRef.current = new ApiClient(config.backendUrl, config.githubPat, config.anthropicKey)
-    } else {
-      apiClientRef.current = null
-    }
-  }, [config])
-
-  // Load today's session once apiClient is ready
-  const apiClient = apiClientRef.current
+  // Build ApiClient synchronously whenever config changes so it's available on the same render
+  const apiClient = useMemo(
+    () => config ? new ApiClient(config.backendUrl, config.githubPat, config.anthropicKey) : null,
+    [config]
+  )
   useEffect(() => {
     if (!apiClient) return
     apiClient.getTodaySession()
