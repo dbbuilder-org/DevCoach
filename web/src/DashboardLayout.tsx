@@ -8,32 +8,35 @@ import QueuePanel from '@ext/webview/components/QueuePanel'
 import ChatPanel from '@ext/webview/components/ChatPanel'
 import ChartsPanel from '@ext/webview/components/ChartsPanel'
 import PuzzlePanel from '@ext/webview/components/PuzzlePanel'
+import RepoPicker from './RepoPicker'
 
 type LeftPanelId = 'today' | 'queue' | 'charts'
 
 const PANEL_LABELS: Record<LeftPanelId, string> = {
   today: 'Today',
   queue: 'Queue',
-  charts: 'Charts',
+  charts: 'Velocity',
 }
 
 interface Props {
   apiClient: ApiClient | null
   session: Session | null
   currentBlock: WorkBlock | null
-  repo: string
+  currentRepo: string
+  repoHistory: string[]
   pendingProactiveMessage: { trigger: ProactiveTrigger; context: ChatContext } | null
   onSessionChange: (s: Session | null) => void
   onBlockChange: (b: WorkBlock | null) => void
   onProactiveTrigger: (trigger: ProactiveTrigger, context?: Record<string, unknown>) => void
   onProactiveConsumed: () => void
+  onRepoChange: (repo: string) => void
   onOpenConfig: () => void
 }
 
 export default function DashboardLayout({
-  apiClient, session, currentBlock, repo,
+  apiClient, session, currentBlock, currentRepo, repoHistory,
   pendingProactiveMessage, onSessionChange, onBlockChange,
-  onProactiveTrigger, onProactiveConsumed, onOpenConfig,
+  onProactiveTrigger, onProactiveConsumed, onRepoChange, onOpenConfig,
 }: Props) {
   const [panelOrder, setPanelOrder] = useState<LeftPanelId[]>(['today', 'queue', 'charts'])
   const [showPuzzle, setShowPuzzle] = useState(true)
@@ -55,6 +58,13 @@ export default function DashboardLayout({
     dragOver.current = null
   }
 
+  // Charts panel label shows cross-repo scope
+  const panelSubtitle = (id: LeftPanelId): string | null => {
+    if (id === 'charts') return 'all repos'
+    if (id === 'queue' || id === 'today') return currentRepo
+    return null
+  }
+
   const renderContent = (id: LeftPanelId) => {
     switch (id) {
       case 'today':
@@ -63,7 +73,7 @@ export default function DashboardLayout({
             apiClient={apiClient}
             session={session}
             currentBlock={currentBlock}
-            repo={repo}
+            repo={currentRepo}
             onSessionChange={onSessionChange}
             onBlockChange={onBlockChange}
             onProactiveTrigger={onProactiveTrigger}
@@ -74,7 +84,7 @@ export default function DashboardLayout({
           <QueuePanel
             apiClient={apiClient}
             session={session}
-            repo={repo}
+            repo={currentRepo}
             onStartBlock={async (item: QueueItem) => {
               if (!apiClient || !session) return
               try {
@@ -111,7 +121,6 @@ export default function DashboardLayout({
             position: 'relative',
             boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
           }}>
-            {/* Modal header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 16px 0',
@@ -121,26 +130,15 @@ export default function DashboardLayout({
               </span>
               <button
                 onClick={() => setShowPuzzle(false)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--vscode-descriptionForeground)',
-                  fontSize: 18, lineHeight: 1, padding: '2px 4px',
-                }}
-                title="Skip puzzle, start work"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--vscode-descriptionForeground)', fontSize: 18, lineHeight: 1, padding: '2px 4px' }}
+                title="Skip puzzle"
               >
                 ✕
               </button>
             </div>
-
             <PuzzlePanel apiClient={apiClient} />
-
-            {/* Start Work shortcut */}
             <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
-              <button
-                className="dc-btn dc-btn-ghost"
-                onClick={() => setShowPuzzle(false)}
-                style={{ fontSize: 12 }}
-              >
+              <button className="dc-btn dc-btn-ghost" onClick={() => setShowPuzzle(false)} style={{ fontSize: 12 }}>
                 Skip — Start Work
               </button>
             </div>
@@ -150,15 +148,22 @@ export default function DashboardLayout({
 
       {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', gap: 12,
         padding: '5px 14px',
         background: 'var(--vscode-editorGroupHeader-tabsBackground)',
         borderBottom: '1px solid var(--vscode-editorWidget-border)',
-        flexShrink: 0,
-        zIndex: 10,
+        flexShrink: 0, zIndex: 10,
       }}>
-        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: '0.02em' }}>DevCoach</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: '0.02em', flexShrink: 0 }}>DevCoach</span>
+
+        {/* Repo picker — the global context switcher */}
+        <RepoPicker
+          current={currentRepo}
+          history={repoHistory.filter(r => r !== currentRepo)}
+          onSelect={onRepoChange}
+        />
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
           <button
             onClick={() => setShowPuzzle(true)}
             title="Show puzzle"
@@ -181,25 +186,22 @@ export default function DashboardLayout({
 
         {/* Left column: resizable + reorderable panels */}
         <Panel defaultSize={44} minSize={22}>
-          {/* Re-key forces remount (size reset) when order changes — intentional */}
           <PanelGroup orientation="vertical" key={panelOrder.join(',')} style={{ height: '100%' }}>
             {panelOrder.map((id, idx) => (
               <React.Fragment key={id}>
                 <Panel defaultSize={34} minSize={8}>
-                  {/* Draggable panel wrapper */}
                   <div
                     style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
                     onDragOver={e => { e.preventDefault(); dragOver.current = id }}
                     onDrop={() => handleDrop(id)}
                   >
-                    {/* Panel title bar with drag handle */}
+                    {/* Title bar */}
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: 6,
                       padding: '3px 10px',
                       background: 'var(--vscode-editorGroupHeader-tabsBackground)',
                       borderBottom: '1px solid var(--vscode-editorWidget-border)',
-                      flexShrink: 0,
-                      userSelect: 'none',
+                      flexShrink: 0, userSelect: 'none',
                     }}>
                       <span
                         draggable
@@ -212,9 +214,19 @@ export default function DashboardLayout({
                       <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', opacity: 0.65 }}>
                         {PANEL_LABELS[id]}
                       </span>
+                      {panelSubtitle(id) && (
+                        <span style={{
+                          fontSize: 10, opacity: 0.4,
+                          fontFamily: 'var(--vscode-editor-font-family)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          maxWidth: 160,
+                        }}>
+                          {panelSubtitle(id)}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Panel content */}
+                    {/* Content */}
                     <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                       {renderContent(id)}
                     </div>
@@ -222,12 +234,7 @@ export default function DashboardLayout({
                 </Panel>
 
                 {idx < panelOrder.length - 1 && (
-                  <PanelResizeHandle style={{
-                    height: 5,
-                    background: 'var(--vscode-editorWidget-border)',
-                    cursor: 'row-resize',
-                    flexShrink: 0,
-                  }} />
+                  <PanelResizeHandle style={{ height: 5, background: 'var(--vscode-editorWidget-border)', cursor: 'row-resize', flexShrink: 0 }} />
                 )}
               </React.Fragment>
             ))}
@@ -235,22 +242,38 @@ export default function DashboardLayout({
         </Panel>
 
         {/* Vertical divider */}
-        <PanelResizeHandle style={{
-          width: 5,
-          background: 'var(--vscode-editorWidget-border)',
-          cursor: 'col-resize',
-        }} />
+        <PanelResizeHandle style={{ width: 5, background: 'var(--vscode-editorWidget-border)', cursor: 'col-resize' }} />
 
-        {/* Right column: Chat, full height */}
+        {/* Right column: Chat, full height, scoped to current repo session */}
         <Panel defaultSize={56} minSize={28}>
-          <div style={{ height: '100%', overflow: 'hidden' }}>
-            <ChatPanel
-              apiClient={apiClient}
-              session={session}
-              currentBlock={currentBlock}
-              pendingProactiveMessage={pendingProactiveMessage}
-              onProactiveConsumed={onProactiveConsumed}
-            />
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Chat repo indicator */}
+            <div style={{
+              padding: '3px 10px',
+              background: 'var(--vscode-editorGroupHeader-tabsBackground)',
+              borderBottom: '1px solid var(--vscode-editorWidget-border)',
+              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', opacity: 0.65 }}>
+                Chat
+              </span>
+              <span style={{
+                fontSize: 10, opacity: 0.4,
+                fontFamily: 'var(--vscode-editor-font-family)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {currentRepo}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+              <ChatPanel
+                apiClient={apiClient}
+                session={session}
+                currentBlock={currentBlock}
+                pendingProactiveMessage={pendingProactiveMessage}
+                onProactiveConsumed={onProactiveConsumed}
+              />
+            </div>
           </div>
         </Panel>
 

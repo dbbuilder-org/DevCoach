@@ -6,27 +6,31 @@ import type { DevCoachConfig } from './ConfigScreen'
 import DashboardLayout from './DashboardLayout'
 
 const STORAGE_KEY = 'dc_config'
+const REPO_KEY = 'dc_current_repo'
+const REPO_HISTORY_KEY = 'dc_repos'
 
-// If Vite build-time env vars are present and no config is saved yet, seed
-// localStorage so the user lands directly in the app without the config form.
 function maybeAutoSeed(): DevCoachConfig | null {
   const pat = import.meta.env.VITE_PREFILL_PAT as string | undefined
   const anthropicKey = import.meta.env.VITE_PREFILL_ANTHROPIC_KEY as string | undefined
   const backendUrl = import.meta.env.VITE_PREFILL_BACKEND_URL as string | undefined
   const owner = import.meta.env.VITE_PREFILL_OWNER as string | undefined
   const repo = import.meta.env.VITE_PREFILL_REPO as string | undefined
-
   if (!pat || !anthropicKey) return null
-
   const seeded: DevCoachConfig = {
     backendUrl: backendUrl ?? 'https://devcoach-api.onrender.com',
-    githubPat: pat,
-    anthropicKey,
-    owner: owner ?? '',
-    repo: repo ?? '',
+    githubPat: pat, anthropicKey,
+    owner: owner ?? '', repo: repo ?? '',
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
   return seeded
+}
+
+function loadRepoHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(REPO_HISTORY_KEY) ?? '[]') } catch { return [] }
+}
+
+function addToHistory(repo: string, current: string[]): string[] {
+  return [repo, ...current.filter(r => r !== repo)].slice(0, 10)
 }
 
 export default function StandaloneApp() {
@@ -35,11 +39,34 @@ export default function StandaloneApp() {
   const [session, setSession] = useState<Session | null>(null)
   const [currentBlock, setCurrentBlock] = useState<WorkBlock | null>(null)
   const [pendingProactiveMessage, setPendingProactiveMessage] = useState<{
-    trigger: ProactiveTrigger
-    context: ChatContext
+    trigger: ProactiveTrigger; context: ChatContext
   } | null>(null)
 
-  // Build ApiClient synchronously so it's available on the same render
+  // ── Repo state ──────────────────────────────────────────────────────────────
+  const defaultRepo = config ? `${config.owner}/${config.repo}` : ''
+
+  const [currentRepo, setCurrentRepo] = useState<string>(() =>
+    localStorage.getItem(REPO_KEY) || defaultRepo
+  )
+  const [repoHistory, setRepoHistory] = useState<string[]>(() => {
+    const h = loadRepoHistory()
+    // Seed history with the config default if it's not already there
+    return defaultRepo && !h.includes(defaultRepo) ? [defaultRepo, ...h] : h
+  })
+
+  const handleRepoChange = useCallback((repo: string) => {
+    setCurrentRepo(repo)
+    localStorage.setItem(REPO_KEY, repo)
+    setRepoHistory(prev => {
+      const next = addToHistory(repo, prev)
+      localStorage.setItem(REPO_HISTORY_KEY, JSON.stringify(next))
+      return next
+    })
+    // Session is per-day (not per-repo) so we keep it; Queue and Chat context
+    // update automatically because they receive the new repo prop.
+  }, [])
+
+  // ── ApiClient ───────────────────────────────────────────────────────────────
   const apiClient = useMemo(
     () => config ? new ApiClient(config.backendUrl, config.githubPat, config.anthropicKey) : null,
     [config]
@@ -48,39 +75,44 @@ export default function StandaloneApp() {
   useEffect(() => {
     if (!apiClient) return
     apiClient.getTodaySession()
-      .then(s => {
-        if (s) {
-          setSession(s)
-          setCurrentBlock(s.currentBlock)
-        }
-      })
-      .catch(() => { /* session not started yet */ })
+      .then(s => { if (s) { setSession(s); setCurrentBlock(s.currentBlock) } })
+      .catch(() => { /* no session yet */ })
   }, [apiClient])
 
+  // ── Config save ─────────────────────────────────────────────────────────────
   const handleConfigSave = useCallback((saved: DevCoachConfig) => {
     setConfig(saved)
+    const newDefault = `${saved.owner}/${saved.repo}`
+    // Only switch current repo if user explicitly changed it in config
+    if (!currentRepo || currentRepo === defaultRepo) {
+      setCurrentRepo(newDefault)
+      localStorage.setItem(REPO_KEY, newDefault)
+    }
+    setRepoHistory(prev => {
+      const next = addToHistory(newDefault, prev)
+      localStorage.setItem(REPO_HISTORY_KEY, JSON.stringify(next))
+      return next
+    })
     setShowConfig(false)
-  }, [])
+  }, [currentRepo, defaultRepo])
 
+  // ── Proactive trigger ───────────────────────────────────────────────────────
   const handleProactiveTrigger = useCallback((
     trigger: ProactiveTrigger,
     extraContext?: Record<string, unknown>
   ) => {
     if (!session) return
-    const context: ChatContext = {
-      currentPhase: currentBlock?.phase,
-      ...(extraContext as Partial<ChatContext> ?? {}),
-    }
-    setPendingProactiveMessage({ trigger, context })
+    setPendingProactiveMessage({
+      trigger,
+      context: {
+        currentPhase: currentBlock?.phase,
+        ...(extraContext as Partial<ChatContext> ?? {}),
+      },
+    })
   }, [session, currentBlock])
 
   if (!config || showConfig) {
-    return (
-      <ConfigScreen
-        existing={config}
-        onSave={handleConfigSave}
-      />
-    )
+    return <ConfigScreen existing={config} onSave={handleConfigSave} />
   }
 
   return (
@@ -88,12 +120,14 @@ export default function StandaloneApp() {
       apiClient={apiClient}
       session={session}
       currentBlock={currentBlock}
-      repo={`${config.owner}/${config.repo}`}
+      currentRepo={currentRepo}
+      repoHistory={repoHistory}
       pendingProactiveMessage={pendingProactiveMessage}
       onSessionChange={setSession}
       onBlockChange={setCurrentBlock}
       onProactiveTrigger={handleProactiveTrigger}
       onProactiveConsumed={() => setPendingProactiveMessage(null)}
+      onRepoChange={handleRepoChange}
       onOpenConfig={() => setShowConfig(true)}
     />
   )
