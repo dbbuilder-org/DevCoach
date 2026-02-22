@@ -146,7 +146,8 @@ export interface RepoHealth {
 export class ApiClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly githubPat: string
+    private readonly githubPat: string,
+    private readonly anthropicKey?: string
   ) {}
 
   // ─── Response Adapters ───────────────────────────────────────────────────
@@ -502,6 +503,9 @@ export class ApiClient {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.githubPat}`,
     };
+    if (this.anthropicKey) {
+      headers['X-Anthropic-Key'] = this.anthropicKey;
+    }
 
     const init: RequestInit = { method, headers };
     if (body !== undefined) {

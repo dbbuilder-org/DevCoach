@@ -1,0 +1,51 @@
+/* Must be first — import extension styles */
+@import '@ext/webview/styles.css';
+
+/* DevCoach Standalone — VS Code variable fallbacks (Catppuccin Mocha palette) */
+:root {
+  --vscode-editor-background: #1e1e2e;
+  --vscode-editor-foreground: #cdd6f4;
+  --vscode-button-background: #89b4fa;
+  --vscode-button-foreground: #1e1e2e;
+  --vscode-input-background: #313244;
+  --vscode-input-foreground: #cdd6f4;
+  --vscode-editorWidget-background: #181825;
+  --vscode-editorWidget-border: #45475a;
+  --vscode-focusBorder: #89b4fa;
+  --vscode-textLink-foreground: #89b4fa;
+  --vscode-descriptionForeground: #a6adc8;
+  --vscode-errorForeground: #f38ba8;
+  --vscode-badge-background: #89b4fa;
+  --vscode-badge-foreground: #1e1e2e;
+  --vscode-terminal-ansiGreen: #a6e3a1;
+  --vscode-terminal-ansiYellow: #f9e2af;
+  --vscode-terminal-ansiBlue: #89b4fa;
+  --vscode-terminal-ansiCyan: #94e2d5;
+  --vscode-terminal-ansiMagenta: #cba6f7;
+  --vscode-list-hoverBackground: #313244;
+  --vscode-button-secondaryBackground: #45475a;
+  --vscode-button-hoverBackground: #74c7ec;
+  --vscode-button-secondaryHoverBackground: #585b70;
+  --vscode-textCodeBlock-background: #181825;
+  --vscode-editorGroupHeader-tabsBackground: #181825;
+  --vscode-tab-activeForeground: #cdd6f4;
+  --vscode-tab-inactiveForeground: #6c7086;
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* Base reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}

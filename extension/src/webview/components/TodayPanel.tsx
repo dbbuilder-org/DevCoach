@@ -56,7 +56,7 @@ export default function TodayPanel({
   const [progressPct, setProgressPct] = useState(dayProgressPercent());
 
   const lastActivityRef = useRef<number>(Date.now());
-  const coachingLevel = 'ransom'; // will be enriched later from session
+  const coachingLevel: 'peter' | 'ransom' = 'ransom'; // will be enriched later from session
 
   // Track any user interaction as "activity"
   const recordActivity = useCallback(() => {
@@ -72,7 +72,7 @@ export default function TodayPanel({
   // Stuck detection — check every 2 minutes, fire if threshold exceeded
   useEffect(() => {
     if (!session || !currentBlock) return;
-    const threshold = coachingLevel === 'peter' ? 15 * 60 * 1000 : 10 * 60 * 1000;
+    const threshold = (coachingLevel as string) === 'peter' ? 15 * 60 * 1000 : 10 * 60 * 1000;
     let alreadyFired = false;
 
     const checkStuck = () => {
