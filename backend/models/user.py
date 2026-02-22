@@ -20,7 +20,6 @@ class User(Base):
         server_default=func.gen_random_uuid(),
     )
     github_username: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    github_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     coaching_level: Mapped[str] = mapped_column(
         Text, nullable=False, default="ransom", server_default="ransom"
     )

@@ -144,11 +144,20 @@ export interface RepoHealth {
 // ─── API Client ──────────────────────────────────────────────────────────────
 
 export class ApiClient {
+  private readonly tokenGetter: () => Promise<string>;
+
   constructor(
     private readonly baseUrl: string,
-    private readonly githubPat: string,
+    /** Static PAT string (VS Code extension) or async getter (web app with Clerk JWT). */
+    tokenOrGetter: string | (() => Promise<string | null>),
     private readonly anthropicKey?: string
-  ) {}
+  ) {
+    if (typeof tokenOrGetter === 'string') {
+      this.tokenGetter = async () => tokenOrGetter;
+    } else {
+      this.tokenGetter = async () => (await tokenOrGetter()) ?? '';
+    }
+  }
 
   // ─── Response Adapters ───────────────────────────────────────────────────
 
@@ -499,9 +508,10 @@ export class ApiClient {
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    const token = await this.tokenGetter();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.githubPat}`,
+      Authorization: `Bearer ${token}`,
     };
     if (this.anthropicKey) {
       headers['X-Anthropic-Key'] = this.anthropicKey;

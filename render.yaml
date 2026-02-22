@@ -16,6 +16,8 @@ services:
         generateValue: true
       - key: FRONTEND_ORIGINS
         value: "vscode-webview://*,https://devcoach-web.onrender.com"
+      - key: CLERK_SECRET_KEY
+        sync: false
 
   - type: web
     name: devcoach-web
@@ -38,10 +40,8 @@ services:
         value: dbbuilder-org
       - key: VITE_PREFILL_REPO
         value: DevCoach
-      - key: VITE_PREFILL_PAT
-        sync: false
-      - key: VITE_PREFILL_ANTHROPIC_KEY
-        sync: false
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        value: pk_test_cHJpbWFyeS13ZWV2aWwtOTIuY2xlcmsuYWNjb3VudHMuZGV2JA
 
 databases:
   - name: devcoach-db

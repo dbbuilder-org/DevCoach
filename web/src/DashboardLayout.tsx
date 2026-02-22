@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { UserButton } from '@clerk/clerk-react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import type {
   ApiClient, ChatContext, ProactiveTrigger, QueueItem, Session, WorkBlock,
@@ -225,6 +226,7 @@ export default function DashboardLayout({
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--vscode-descriptionForeground)', fontSize: 16, padding: '2px 4px' }}>
           ⚙
         </button>
+        <UserButton />
       </div>
     </div>
   )

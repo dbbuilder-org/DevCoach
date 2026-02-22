@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     # CORS
     frontend_origins: str = "http://localhost:5173"
 
-    # GitHub App (optional OAuth flow — PAT is the primary auth mechanism)
+    # Clerk auth
+    clerk_secret_key: str = ""
+
+    # GitHub App (legacy optional field)
     github_app_client_id: Optional[str] = None
 
     # Server

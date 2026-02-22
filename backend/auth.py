@@ -3,20 +3,26 @@ from __future__ import annotations
 """
 Authentication dependency for DevCoach.
 
-Pattern: extract `Authorization: Bearer <github_pat>` from the request header,
-call the GitHub /user API to resolve the authenticated user's login, then upsert
-that user in the local database.
+Supports two token types in the Authorization: Bearer header:
 
-The PAT is encrypted at rest using Fernet symmetric encryption derived from
-SECRET_KEY. We never log tokens or PII.
+  1. Clerk JWT (web app) — detected by JWT structure (three base64url segments).
+     Verified against Clerk's JWKS endpoint. GitHub OAuth token fetched from
+     Clerk backend API and attached as user._pat for downstream GitHub calls.
+
+  2. GitHub PAT (VS Code extension) — any non-JWT token.
+     Validated directly against the GitHub /user API (unchanged behaviour).
+
+Neither token type is persisted in the database. The _pat attribute is
+in-memory only, lives for the lifetime of the request, and is never logged.
 """
 
-import base64
+import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
-from cryptography.fernet import Fernet
+import httpx
 from fastapi import Depends, Header, HTTPException, status
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,41 +31,139 @@ from db import get_db
 from models.user import User
 from services.github_service import get_authenticated_user
 
+# ---------------------------------------------------------------------------
+# JWKS cache — refreshed at most once per hour to avoid per-request latency
+# ---------------------------------------------------------------------------
 
-def _fernet_key() -> bytes:
-    """
-    Derive a 32-byte URL-safe base64 Fernet key from settings.secret_key.
-    Fernet requires exactly 32 bytes encoded as URL-safe base64 (44 chars).
-    """
-    raw = settings.secret_key[:32].encode().ljust(32)[:32]
-    return base64.urlsafe_b64encode(raw)
+_jwks_cache: dict[str, Any] = {}
+_jwks_cached_at: float = 0.0
+_JWKS_TTL = 3600  # seconds
 
-
-def _fernet() -> Fernet:
-    return Fernet(_fernet_key())
-
-
-def encrypt_pat(pat: str) -> str:
-    """Encrypt a GitHub PAT for storage. Returns a base64-encoded ciphertext string."""
-    return _fernet().encrypt(pat.encode()).decode()
+# Per-user GitHub OAuth token cache (clerk_user_id → (token, fetched_at))
+_gh_token_cache: dict[str, tuple[str, float]] = {}
+_GH_TOKEN_TTL = 3000  # 50 minutes — GitHub OAuth tokens typically last much longer
 
 
-def decrypt_pat(encrypted: str) -> str:
-    """Decrypt a stored encrypted PAT back to plaintext."""
-    return _fernet().decrypt(encrypted.encode()).decode()
+async def _get_jwks() -> dict[str, Any]:
+    global _jwks_cache, _jwks_cached_at
+    if time.monotonic() - _jwks_cached_at < _JWKS_TTL and _jwks_cache:
+        return _jwks_cache
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            "https://api.clerk.com/v1/jwks",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+        )
+        resp.raise_for_status()
+        _jwks_cache = resp.json()
+        _jwks_cached_at = time.monotonic()
+    return _jwks_cache
+
+
+async def _verify_clerk_jwt(token: str) -> dict[str, Any]:
+    """Verify a Clerk-issued JWT and return its claims."""
+    try:
+        header = jwt.get_unverified_header(token)
+    except JWTError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+
+    kid = header.get("kid")
+    jwks = await _get_jwks()
+
+    rsa_key: dict[str, Any] = {}
+    for key in jwks.get("keys", []):
+        if key.get("kid") == kid:
+            rsa_key = {k: key[k] for k in ("kty", "kid", "n", "e") if k in key}
+            if "use" in key:
+                rsa_key["use"] = key["use"]
+            break
+
+    if not rsa_key:
+        # Unknown kid — cache may be stale; force refresh once
+        global _jwks_cached_at
+        _jwks_cached_at = 0.0
+        jwks = await _get_jwks()
+        for key in jwks.get("keys", []):
+            if key.get("kid") == kid:
+                rsa_key = {k: key[k] for k in ("kty", "kid", "n", "e") if k in key}
+                if "use" in key:
+                    rsa_key["use"] = key["use"]
+                break
+
+    if not rsa_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token signing key not found.",
+        )
+
+    try:
+        claims: dict[str, Any] = jwt.decode(
+            token,
+            rsa_key,
+            algorithms=["RS256"],
+            options={"verify_aud": False},
+        )
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token verification failed: {exc}",
+        )
+    return claims
+
+
+async def _get_clerk_user(clerk_user_id: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_user_id}",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _get_github_oauth_token(clerk_user_id: str) -> str:
+    """Return the GitHub OAuth access token for this Clerk user, with caching."""
+    cached = _gh_token_cache.get(clerk_user_id)
+    if cached and time.monotonic() - cached[1] < _GH_TOKEN_TTL:
+        return cached[0]
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_user_id}/oauth_access_tokens/oauth_github",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+        )
+        if resp.status_code != 200 or not resp.json():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="GitHub OAuth token not found. Connect GitHub in your Clerk account.",
+            )
+        token: str = resp.json()[0]["token"]
+
+    _gh_token_cache[clerk_user_id] = (token, time.monotonic())
+    return token
+
+
+def _is_jwt(token: str) -> bool:
+    """Heuristic: JWTs have exactly three dot-separated base64url segments."""
+    parts = token.split(".")
+    return len(parts) == 3
+
+
+async def _upsert_user(github_username: str, db: AsyncSession) -> User:
+    stmt = select(User).where(User.github_username == github_username)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    if user is None:
+        user = User(id=uuid.uuid4(), github_username=github_username)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    return user
 
 
 async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """
-    FastAPI dependency that:
-    1. Extracts the Bearer PAT from the Authorization header.
-    2. Calls the GitHub API to verify it and get the username.
-    3. Upserts the user record in the database (PAT stored encrypted).
-    4. Returns the User ORM object with the raw PAT attached in-memory.
-    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -67,16 +171,62 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    pat = authorization[len("Bearer "):]
-    if not pat:
+    token = authorization[len("Bearer "):]
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Bearer token is empty.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # ── Clerk JWT path (web app) ──────────────────────────────────────────────
+    if _is_jwt(token):
+        if not settings.clerk_secret_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Clerk is not configured on this server.",
+            )
+        claims = await _verify_clerk_jwt(token)
+        clerk_user_id: str = claims.get("sub", "")
+        if not clerk_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Clerk JWT missing sub claim.",
+            )
+
+        # Get GitHub username and OAuth token from Clerk
+        try:
+            clerk_user = await _get_clerk_user(clerk_user_id)
+            github_account = next(
+                (
+                    acc
+                    for acc in clerk_user.get("external_accounts", [])
+                    if acc.get("provider") == "github"
+                ),
+                None,
+            )
+            if not github_account:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="GitHub account not connected. Sign in with GitHub via Clerk.",
+                )
+            github_username: str = github_account.get("username", "")
+            github_token = await _get_github_oauth_token(clerk_user_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Could not retrieve GitHub identity from Clerk: {exc}",
+            )
+
+        user = await _upsert_user(github_username, db)
+        user._pat = github_token  # type: ignore[attr-defined]
+        return user
+
+    # ── GitHub PAT path (VS Code extension) ──────────────────────────────────
     try:
-        gh_user = await get_authenticated_user(pat)
+        gh_user = await get_authenticated_user(token)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,39 +234,15 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    github_username: str = gh_user.get("login", "")
+    github_username = gh_user.get("login", "")
     if not github_username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="GitHub user login could not be determined.",
         )
 
-    # Upsert user — store the PAT encrypted at rest, never log the token
-    stmt = select(User).where(User.github_username == github_username)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    encrypted_pat = encrypt_pat(pat)
-
-    if user is None:
-        user = User(
-            id=uuid.uuid4(),
-            github_username=github_username,
-            github_token_enc=encrypted_pat,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    else:
-        # Update the stored encrypted token on every auth (PAT may have rotated)
-        user.github_token_enc = encrypted_pat
-        await db.commit()
-        await db.refresh(user)
-
-    # Attach the raw PAT to the user object in memory (not persisted here) so
-    # downstream services can use it without having to re-parse the header.
-    user._pat = pat  # type: ignore[attr-defined]
-
+    user = await _upsert_user(github_username, db)
+    user._pat = token  # type: ignore[attr-defined]
     return user
 
 
