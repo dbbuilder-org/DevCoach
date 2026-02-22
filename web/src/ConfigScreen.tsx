@@ -13,7 +13,7 @@ const DEFAULT_BACKEND = 'https://devcoach-api.onrender.com'
 
 export function loadConfig(): DevCoachConfig | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     return JSON.parse(raw) as DevCoachConfig
   } catch {
@@ -59,7 +59,7 @@ export default function ConfigScreen({ existing, onSave }: Props) {
       owner: owner.trim(),
       repo: repo.trim(),
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(config))
     onSave(config)
   }
 

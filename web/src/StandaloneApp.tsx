@@ -21,7 +21,7 @@ function maybeAutoSeed(): DevCoachConfig | null {
     githubPat: pat, anthropicKey,
     owner: owner ?? '', repo: repo ?? '',
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
   return seeded
 }
 
